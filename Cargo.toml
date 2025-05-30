@@ -1,0 +1,42 @@
+[package]
+name = "esp-zerobot-nostd"
+version = "0.1.0"
+authors = ["Vasily Khoruzhick <anarsoul@gmail.com>"]
+edition = "2021"
+license = "MIT"
+
+[profile.dev]
+# Rust debug is too slow.
+# For debug builds always builds with some optimization
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1 # LLVM can perform better optimizations using a single thread
+debug = 2
+debug-assertions = false
+incremental = false
+lto = 'fat'
+opt-level = 's'
+overflow-checks = false
+
+[dependencies]
+embassy-executor = "0.7.0"
+embassy-futures = "0.1.1"
+embassy-sync = "0.6.2"
+embassy-time = "0.4.0"
+esp-alloc = "0.7.0"
+esp-backtrace = { version = "0.14.2", features = [
+    "esp32c3",
+    "exception-handler",
+    "panic-handler",
+    "println",
+] }
+esp-hal = { version = "1.0.0-beta.0", features = [ "esp32c3", "unstable" ] }
+esp-hal-embassy = { version = "0.7.0", features = [ "esp32c3" ] }
+esp-println = { version = "0.12.0", features = ["esp32c3", "log"] }
+hcsr04_async = "0.4.0"
+log = { version = "0.4.27" }
+smart-leds = "0.4.0"
+static_cell = { version = "2.1.0" }
+tcs3472 = { version = "1.0.0", features = [ "async" ] }
+ws2812-spi = "0.5.0"
