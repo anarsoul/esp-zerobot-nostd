@@ -114,23 +114,23 @@ impl Color {
                 Color::Orange,
                 [
                     LowHigh::High,
-                    LowHigh::Range(0.45, 0.60),
-                    LowHigh::Range(0.4, 0.55),
+                    LowHigh::Range(0.35, 0.55),
+                    LowHigh::Range(0.2, 0.4),
                 ],
             ),
             (
                 Color::Red,
                 [
                     LowHigh::High,
-                    LowHigh::Range(0.45, 0.65),
-                    LowHigh::Range(0.55, 0.85),
+                    LowHigh::Range(0.2, 0.35),
+                    LowHigh::Range(0.2, 0.4),
                 ],
             ),
             (
                 Color::Blue,
                 [
-                    LowHigh::Range(0.0, 0.35),
-                    LowHigh::Range(0.35, 0.55),
+                    LowHigh::Range(0.15, 0.35),
+                    LowHigh::Range(0.30, 0.50),
                     LowHigh::High,
                 ],
             ),
