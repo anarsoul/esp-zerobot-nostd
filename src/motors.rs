@@ -295,7 +295,10 @@ impl<'a> MotorsSm<'a> {
             | MotorSmState::Backwards
             | MotorSmState::Left
             | MotorSmState::Right => {
-                if self.current_cmd.is_some_and(|c| matches!(c, MotorsSmCommand::EmergencyStop)) {
+                if self
+                    .current_cmd
+                    .is_some_and(|c| matches!(c, MotorsSmCommand::EmergencyStop))
+                {
                     self.state = MotorSmState::Stopped;
                     self.motors.emergency_stop();
                     self.current_cmd = None;
@@ -319,31 +322,33 @@ impl<'a> MotorsSm<'a> {
         if let MotorsSmCommand::EmergencyStop = new_cmd {
             self.current_cmd = Some(new_cmd);
             Ok(())
-        } else { match self.state {
-            MotorSmState::Stopped => {
-                if self.current_cmd.is_some() {
-                    // A command is already accepted, but hasn't been processed yet, so SM is busy
+        } else {
+            match self.state {
+                MotorSmState::Stopped => {
+                    if self.current_cmd.is_some() {
+                        // A command is already accepted, but hasn't been processed yet, so SM is busy
+                        Err(MotorsSmError::Busy)
+                    } else {
+                        self.current_cmd = Some(new_cmd);
+                        Ok(())
+                    }
+                }
+                MotorSmState::Forward
+                | MotorSmState::Backwards
+                | MotorSmState::Left
+                | MotorSmState::Right => {
+                    if let MotorsSmCommand::Stop = new_cmd {
+                        // Accept command. Next state is WaitDecel
+                        Ok(())
+                    } else {
+                        Err(MotorsSmError::Busy)
+                    }
+                }
+                MotorSmState::WaitAccel | MotorSmState::WaitDecel => {
+                    // Busy. Retry later
                     Err(MotorsSmError::Busy)
-                } else {
-                    self.current_cmd = Some(new_cmd);
-                    Ok(())
                 }
             }
-            MotorSmState::Forward
-            | MotorSmState::Backwards
-            | MotorSmState::Left
-            | MotorSmState::Right => {
-                if let MotorsSmCommand::Stop = new_cmd {
-                    // Accept command. Next state is WaitDecel
-                    Ok(())
-                } else {
-                    Err(MotorsSmError::Busy)
-                }
-            }
-            MotorSmState::WaitAccel | MotorSmState::WaitDecel => {
-                // Busy. Retry later
-                Err(MotorsSmError::Busy)
-            }
-        }}
+        }
     }
 }

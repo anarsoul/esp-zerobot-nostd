@@ -43,7 +43,10 @@ const DISTANCE_CLOSE: u16 = 10; // cm
 async fn battery_task(adc: peripherals::ADC1, pin: esp_hal::gpio::GpioPin<4>) {
     log::info!("Starting battery task");
     let mut adc1_config = adc::AdcConfig::new();
-    let mut adc_pin = adc1_config.enable_pin_with_cal::<_, adc::AdcCalCurve<peripherals::ADC1>>(pin, adc::Attenuation::_11dB);
+    let mut adc_pin = adc1_config.enable_pin_with_cal::<_, adc::AdcCalCurve<peripherals::ADC1>>(
+        pin,
+        adc::Attenuation::_11dB,
+    );
     let mut adc = adc::Adc::new(adc, adc1_config).into_async();
 
     loop {
@@ -185,59 +188,63 @@ async fn main(spawner: Spawner) {
             match msg {
                 SensorMessage::Color(color) => {
                     led.write([color.to_rgb()]).unwrap();
-                    if distance_close_cnt < 3 { match color {
-                        Color::Magenta => {
-                            if motors_sm
-                                .process_cmd(MotorsSmCommand::Forward(FORWARD_DELAY))
-                                .is_ok()
-                            {
-                                last_turn = false;
-                            }
-                        }
-                        Color::Green => {
-                            if motors_sm.process_cmd(MotorsSmCommand::Stop).is_ok() {
-                                last_turn = false;
-                            }
-                        }
-                        Color::Red | Color::Orange => {
-                            if !last_turn {
+                    if distance_close_cnt < 3 {
+                        match color {
+                            Color::Magenta => {
                                 if motors_sm
-                                    .process_cmd(MotorsSmCommand::Left(LEFT_DELAY))
+                                    .process_cmd(MotorsSmCommand::Forward(FORWARD_DELAY))
                                     .is_ok()
                                 {
-                                    last_turn = true;
+                                    last_turn = false;
                                 }
-                            } else if motors_sm
-                                .process_cmd(MotorsSmCommand::Forward(FORWARD_DELAY))
-                                .is_ok()
-                            {
-                                last_turn = false;
                             }
-                        }
-                        Color::Blue => {
-                            if !last_turn {
-                                if motors_sm
-                                    .process_cmd(MotorsSmCommand::Right(RIGHT_DELAY))
+                            Color::Green => {
+                                if motors_sm.process_cmd(MotorsSmCommand::Stop).is_ok() {
+                                    last_turn = false;
+                                }
+                            }
+                            Color::Red | Color::Orange => {
+                                if !last_turn {
+                                    if motors_sm
+                                        .process_cmd(MotorsSmCommand::Left(LEFT_DELAY))
+                                        .is_ok()
+                                    {
+                                        last_turn = true;
+                                    }
+                                } else if motors_sm
+                                    .process_cmd(MotorsSmCommand::Forward(FORWARD_DELAY))
                                     .is_ok()
                                 {
-                                    last_turn = true;
+                                    last_turn = false;
                                 }
-                            } else if motors_sm
-                                .process_cmd(MotorsSmCommand::Forward(FORWARD_DELAY))
-                                .is_ok()
-                            {
-                                last_turn = false;
                             }
+                            Color::Blue => {
+                                if !last_turn {
+                                    if motors_sm
+                                        .process_cmd(MotorsSmCommand::Right(RIGHT_DELAY))
+                                        .is_ok()
+                                    {
+                                        last_turn = true;
+                                    }
+                                } else if motors_sm
+                                    .process_cmd(MotorsSmCommand::Forward(FORWARD_DELAY))
+                                    .is_ok()
+                                {
+                                    last_turn = false;
+                                }
+                            }
+                            _ => {}
                         }
-                        _ => {}
-                    }}
+                    }
                 }
                 SensorMessage::Distance(distance) => {
                     // Do emergency stop if distance is < 10cm
                     if distance <= DISTANCE_CLOSE {
                         if distance_close_cnt == 3 {
                             log::info!("Emergency stop!");
-                            motors_sm.process_cmd(MotorsSmCommand::EmergencyStop).unwrap();
+                            motors_sm
+                                .process_cmd(MotorsSmCommand::EmergencyStop)
+                                .unwrap();
                         } else {
                             distance_close_cnt += 1;
                         }
@@ -249,7 +256,9 @@ async fn main(spawner: Spawner) {
                     if v > NO_BATTERY && v < BATTERY_LOW {
                         // Break the loop if voltage is lower than 3.2v
                         log::info!("Battery low: {} mV", v * 2);
-                        motors_sm.process_cmd(MotorsSmCommand::EmergencyStop).unwrap();
+                        motors_sm
+                            .process_cmd(MotorsSmCommand::EmergencyStop)
+                            .unwrap();
                         break;
                     }
                 }
