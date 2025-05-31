@@ -32,10 +32,11 @@ use motors::{Motors, MotorsSm, MotorsSmCommand};
 use esp_alloc as _;
 
 const FORWARD_DELAY: u64 = 700;
-const LEFT_DELAY: u64 = 240;
-const RIGHT_DELAY: u64 = 240;
+const LEFT_DELAY: u64 = 200;
+const RIGHT_DELAY: u64 = 200;
 const _BACKWARDS_DELAY: u64 = 1000;
 const BATTERY_LOW: u16 = 3200; // 3200 mV
+const NO_BATTERY: u16 = 200; // 200 mV
 const DISTANCE_CLOSE: u16 = 10; // cm
 
 #[embassy_executor::task]
@@ -46,11 +47,11 @@ async fn battery_task(adc: peripherals::ADC1, pin: esp_hal::gpio::GpioPin<4>) {
     let mut adc = adc::Adc::new(adc, adc1_config).into_async();
 
     loop {
-        let v = adc.read_oneshot(&mut adc_pin).await;
+        let v = 2 * adc.read_oneshot(&mut adc_pin).await;
 
         SENSOR_CHANNEL.send(SensorMessage::Voltage(v)).await;
-        log::info!("Voltage: {}", v);
-        Timer::after(Duration::from_millis(100)).await;
+        log::info!("Battery voltage: {}", v);
+        Timer::after(Duration::from_millis(200)).await;
     }
 }
 
@@ -193,12 +194,12 @@ async fn main(spawner: Spawner) {
                                 last_turn = false;
                             }
                         }
-                        Color::Blue => {
+                        Color::Green => {
                             if motors_sm.process_cmd(MotorsSmCommand::Stop).is_ok() {
                                 last_turn = false;
                             }
                         }
-                        Color::Red => {
+                        Color::Red | Color::Orange => {
                             if !last_turn {
                                 if motors_sm
                                     .process_cmd(MotorsSmCommand::Left(LEFT_DELAY))
@@ -213,7 +214,7 @@ async fn main(spawner: Spawner) {
                                 last_turn = false;
                             }
                         }
-                        Color::Orange => {
+                        Color::Blue => {
                             if !last_turn {
                                 if motors_sm
                                     .process_cmd(MotorsSmCommand::Right(RIGHT_DELAY))
@@ -245,7 +246,7 @@ async fn main(spawner: Spawner) {
                     }
                 }
                 SensorMessage::Voltage(v) => {
-                    if v * 2 < BATTERY_LOW {
+                    if v > NO_BATTERY && v < BATTERY_LOW {
                         // Break the loop if voltage is lower than 3.2v
                         log::info!("Battery low: {} mV", v * 2);
                         motors_sm.process_cmd(MotorsSmCommand::EmergencyStop).unwrap();

@@ -105,8 +105,8 @@ impl Color {
             (
                 Color::Magenta,
                 [
-                    LowHigh::Range(0.3, 0.5),
-                    LowHigh::Range(0.3, 0.5),
+                    LowHigh::Range(0.35, 0.55),
+                    LowHigh::Range(0.3, 0.55),
                     LowHigh::High,
                 ],
             ),
@@ -114,16 +114,24 @@ impl Color {
                 Color::Orange,
                 [
                     LowHigh::High,
-                    LowHigh::Range(0.45, 0.55),
-                    LowHigh::Range(0.4, 0.5),
+                    LowHigh::Range(0.45, 0.60),
+                    LowHigh::Range(0.4, 0.55),
                 ],
             ),
             (
                 Color::Red,
                 [
                     LowHigh::High,
-                    LowHigh::Range(0.45, 0.55),
-                    LowHigh::Range(0.55, 0.7),
+                    LowHigh::Range(0.45, 0.65),
+                    LowHigh::Range(0.55, 0.85),
+                ],
+            ),
+            (
+                Color::Blue,
+                [
+                    LowHigh::Range(0.0, 0.35),
+                    LowHigh::Range(0.35, 0.55),
+                    LowHigh::High,
                 ],
             ),
         ];
@@ -155,7 +163,7 @@ pub async fn color_task(i2c: i2c::master::I2c<'static, esp_hal::Async>) {
         if sensor.is_rgbc_status_valid().await.unwrap() {
             let m = sensor.read_all_channels().await.unwrap();
             let color = Color::from_measurement(m);
-            log::debug!(
+            log::info!(
                 "Measurement: {:?}, {:?}, {:?}",
                 m,
                 normalize_measurement(m),
