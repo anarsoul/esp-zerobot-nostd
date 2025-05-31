@@ -30,7 +30,7 @@ pub async fn distance_task(trigger: AnyPin, echo: AnyPin) {
     loop {
         let distance = sensor.measure(temp).await;
         if let Ok(res) = distance {
-            log::debug!("Distance: {}", res);
+            log::info!("Distance: {}", res);
             SENSOR_CHANNEL
                 .send(SensorMessage::Distance(res as u16))
                 .await;

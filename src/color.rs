@@ -163,7 +163,7 @@ pub async fn color_task(i2c: i2c::master::I2c<'static, esp_hal::Async>) {
         if sensor.is_rgbc_status_valid().await.unwrap() {
             let m = sensor.read_all_channels().await.unwrap();
             let color = Color::from_measurement(m);
-            log::info!(
+            log::debug!(
                 "Measurement: {:?}, {:?}, {:?}",
                 m,
                 normalize_measurement(m),

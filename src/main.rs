@@ -37,7 +37,8 @@ const RIGHT_DELAY: u64 = 200;
 const _BACKWARDS_DELAY: u64 = 1000;
 const BATTERY_LOW: u16 = 3200; // 3200 mV
 const NO_BATTERY: u16 = 200; // 200 mV
-const DISTANCE_CLOSE: u16 = 10; // cm
+const DISTANCE_CLOSE: u16 = 5; // cm
+const DISTANCE_SAMPLES: i32 = 3;
 
 #[embassy_executor::task]
 async fn battery_task(adc: peripherals::ADC1, pin: esp_hal::gpio::GpioPin<4>) {
@@ -53,7 +54,7 @@ async fn battery_task(adc: peripherals::ADC1, pin: esp_hal::gpio::GpioPin<4>) {
         let v = 2 * adc.read_oneshot(&mut adc_pin).await;
 
         SENSOR_CHANNEL.send(SensorMessage::Voltage(v)).await;
-        log::info!("Battery voltage: {}", v);
+        log::debug!("Battery voltage: {}", v);
         Timer::after(Duration::from_millis(200)).await;
     }
 }
@@ -166,7 +167,9 @@ async fn main(spawner: Spawner) {
     let mut wait = 0;
     let mut now: Option<Instant> = None;
     let mut last_turn = false;
-    let mut distance_close_cnt = 0;
+
+    let mut distance_cnt = 0;
+    let mut distance_close = false;
     loop {
         let timer_delay = if wait > 0 {
             let elapsed = now.unwrap().elapsed().as_millis();
@@ -188,7 +191,7 @@ async fn main(spawner: Spawner) {
             match msg {
                 SensorMessage::Color(color) => {
                     led.write([color.to_rgb()]).unwrap();
-                    if distance_close_cnt < 3 {
+                    if !distance_close {
                         match color {
                             Color::Magenta => {
                                 if motors_sm
@@ -238,20 +241,29 @@ async fn main(spawner: Spawner) {
                     }
                 }
                 SensorMessage::Distance(distance) => {
-                    // Do emergency stop if distance is < 10cm
-                    if distance <= DISTANCE_CLOSE {
-                        if distance_close_cnt == 3 {
-                            log::info!("Emergency stop!");
-                            motors_sm
-                                .process_cmd(MotorsSmCommand::EmergencyStop)
-                                .unwrap();
-                        } else {
-                            distance_close_cnt += 1;
-                        }
+                    // Do emergency stop if distance is < 5cm
+                    if (!distance_close && distance <= DISTANCE_CLOSE)
+                        || (distance_close && distance >= DISTANCE_CLOSE)
+                    {
+                        distance_cnt = (distance_cnt + 1).clamp(0, DISTANCE_SAMPLES);
                     } else {
-                        distance_close_cnt = 0;
+                        distance_cnt = 0;
+                    }
+
+                    if distance_cnt == DISTANCE_SAMPLES {
+                        distance_close = !distance_close;
+                        distance_cnt = 0;
+                        log::info!("Distance close flipped to {}", distance_close);
+                    }
+
+                    if distance_close {
+                        log::info!("Emergency stop!");
+                        motors_sm
+                            .process_cmd(MotorsSmCommand::EmergencyStop)
+                            .unwrap();
                     }
                 }
+
                 SensorMessage::Voltage(v) => {
                     if v > NO_BATTERY && v < BATTERY_LOW {
                         // Break the loop if voltage is lower than 3.2v
