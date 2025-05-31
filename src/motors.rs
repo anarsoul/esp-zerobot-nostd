@@ -269,6 +269,12 @@ impl<'a> MotorsSm<'a> {
                             self.state = MotorSmState::Right;
                             right
                         }
+                        MotorsSmCommand::EmergencyStop => {
+                            self.state = MotorSmState::Stopped;
+                            self.motors.emergency_stop();
+                            self.current_cmd = None;
+                            0
+                        }
                         _ => {
                             log::info!(
                                 "{:?} state with {:?} command. Stopping motors",
@@ -289,8 +295,15 @@ impl<'a> MotorsSm<'a> {
             | MotorSmState::Backwards
             | MotorSmState::Left
             | MotorSmState::Right => {
-                self.state = MotorSmState::WaitDecel;
-                self.motors.stop() as u64
+                if self.current_cmd.is_some_and(|c| matches!(c, MotorsSmCommand::EmergencyStop)) {
+                    self.state = MotorSmState::Stopped;
+                    self.motors.emergency_stop();
+                    self.current_cmd = None;
+                    0
+                } else {
+                    self.state = MotorSmState::WaitDecel;
+                    self.motors.stop() as u64
+                }
             }
             MotorSmState::WaitDecel => {
                 self.state = MotorSmState::Stopped;
@@ -303,7 +316,10 @@ impl<'a> MotorsSm<'a> {
     }
 
     pub fn process_cmd(&mut self, new_cmd: MotorsSmCommand) -> Result<(), MotorsSmError> {
-        match self.state {
+        if let MotorsSmCommand::EmergencyStop = new_cmd {
+            self.current_cmd = Some(new_cmd);
+            Ok(())
+        } else { match self.state {
             MotorSmState::Stopped => {
                 if self.current_cmd.is_some() {
                     // A command is already accepted, but hasn't been processed yet, so SM is busy
@@ -328,6 +344,6 @@ impl<'a> MotorsSm<'a> {
                 // Busy. Retry later
                 Err(MotorsSmError::Busy)
             }
-        }
+        }}
     }
 }
