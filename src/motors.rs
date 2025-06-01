@@ -19,7 +19,7 @@ impl Default for Config {
             decel_time_l: DECEL_TIME_L,
             decel_time_r: DECEL_TIME_R,
             left_duty: 87,
-            right_duty: 80,
+            right_duty: 81,
         }
     }
 }

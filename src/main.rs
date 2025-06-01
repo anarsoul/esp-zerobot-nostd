@@ -32,8 +32,8 @@ use motors::{Motors, MotorsSm, MotorsSmCommand};
 use esp_alloc as _;
 
 const FORWARD_DELAY: u64 = 700;
-const LEFT_DELAY: u64 = 200;
-const RIGHT_DELAY: u64 = 200;
+const LEFT_DELAY: u64 = 170;
+const RIGHT_DELAY: u64 = 160;
 const _BACKWARDS_DELAY: u64 = 1000;
 const BATTERY_LOW: u16 = 3200; // 3200 mV
 const NO_BATTERY: u16 = 200; // 200 mV
