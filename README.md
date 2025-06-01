@@ -47,6 +47,8 @@ Example:
 
 ![](img/mats.jpg)
 
+Do not block robot wheels while it is on, it may damage motor gearboxes. Ideally, turn off the robot before lifting it up or cover ultrasonic sensor with your hand so it doesn't attempt to turn on the motors.
+
 # FAQ
 
 ## The robot goes slightly sideways instead of going forward
@@ -54,3 +56,7 @@ Example:
 Yeah, it is a known issue. The robot uses 2 motors for moving and unfortunately the motors might be built slightly differently. The robot does not have a way to sense its orientation or how many revolutions the wheels made. To compensate for the motors difference, I calibrated the power applied to the motors to get the same speed on each motor, but it is not an ideal solution. Better solution would require extra hardware, e.g. encoders so the software can sense position of the wheels or an accelerometer so the robot can sense the direction
 
 TLDR: it is a classic problem and there is no good software-only solution
+
+## Robot doesn't recognize the color and doesn't react on it or reaction is wrong
+
+Likely ambient light is too bright and it saturates the sensor. Closing the blinds a bit might help
