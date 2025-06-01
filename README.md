@@ -1,6 +1,6 @@
 # [Tiny Robot Car](https://anarsoul.github.io/esp-zerobot-nostd)
 
-This is a tiny robot car based on [Zerobot chassis]("https://hackaday.io/project/25092-zerobot-raspberry-pi-zero-fpv-robot/log/97988-the-new-zerobot-pro")
+This is a tiny robot car based on [Zerobot chassis](https://hackaday.io/project/25092-zerobot-raspberry-pi-zero-fpv-robot/log/97988-the-new-zerobot-pro)
 
 Strictly speaking, the only part from Zerobot is enclosure with some minor modifications.
 
