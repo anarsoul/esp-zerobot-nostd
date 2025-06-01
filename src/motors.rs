@@ -174,6 +174,7 @@ pub enum MotorsSmCommand {
     Forward(u64),
     #[allow(dead_code)]
     Backwards(u64),
+    #[allow(dead_code)]
     Stop,
     EmergencyStop,
     Left(u64),

@@ -21,24 +21,17 @@ use embassy_futures::select::{select, Either};
 
 mod color;
 mod comm;
+mod control;
 mod distance;
 mod motors;
 
-use color::{color_task, Color};
+use color::color_task;
 use comm::{SensorMessage, SENSOR_CHANNEL};
+use control::ControlSm;
 use distance::distance_task;
-use motors::{Motors, MotorsSm, MotorsSmCommand};
+use motors::{Motors, MotorsSm};
 
 use esp_alloc as _;
-
-const FORWARD_DELAY: u64 = 600;
-const LEFT_DELAY: u64 = 180;
-const RIGHT_DELAY: u64 = 160;
-const _BACKWARDS_DELAY: u64 = 1000;
-const BATTERY_LOW: u16 = 3200; // 3200 mV
-const NO_BATTERY: u16 = 200; // 200 mV
-const DISTANCE_CLOSE: u16 = 7; // cm
-const DISTANCE_SAMPLES: i32 = 3;
 
 #[embassy_executor::task]
 async fn battery_task(adc: peripherals::ADC1, pin: esp_hal::gpio::GpioPin<4>) {
@@ -153,6 +146,7 @@ async fn main(spawner: Spawner) {
 
     let motors = Motors::init(mot1_1, mot1_2, mot2_1, mot2_2, motors::Config::default());
     let mut motors_sm = MotorsSm::init(motors);
+    let mut control_sm = ControlSm::init();
 
     let battery_pin = peripherals.GPIO4;
     let adc = peripherals.ADC1;
@@ -166,10 +160,6 @@ async fn main(spawner: Spawner) {
 
     let mut wait = 0;
     let mut now: Option<Instant> = None;
-    let mut last_turn = false;
-
-    let mut distance_cnt = 0;
-    let mut distance_close = false;
     loop {
         let timer_delay = if wait > 0 {
             let elapsed = now.unwrap().elapsed().as_millis();
@@ -188,90 +178,16 @@ async fn main(spawner: Spawner) {
         .await;
 
         if let Either::Second(msg) = res {
-            match msg {
-                SensorMessage::Color(color) => {
-                    led.write([color.to_rgb()]).unwrap();
-                    if !distance_close {
-                        match color {
-                            Color::Magenta => {
-                                if motors_sm
-                                    .process_cmd(MotorsSmCommand::Forward(FORWARD_DELAY))
-                                    .is_ok()
-                                {
-                                    last_turn = false;
-                                }
-                            }
-                            Color::Green => {
-                                if motors_sm.process_cmd(MotorsSmCommand::Stop).is_ok() {
-                                    last_turn = false;
-                                }
-                            }
-                            Color::Red | Color::Orange => {
-                                if !last_turn {
-                                    if motors_sm
-                                        .process_cmd(MotorsSmCommand::Left(LEFT_DELAY))
-                                        .is_ok()
-                                    {
-                                        last_turn = true;
-                                    }
-                                } else if motors_sm
-                                    .process_cmd(MotorsSmCommand::Forward(FORWARD_DELAY))
-                                    .is_ok()
-                                {
-                                    last_turn = false;
-                                }
-                            }
-                            Color::Blue => {
-                                if !last_turn {
-                                    if motors_sm
-                                        .process_cmd(MotorsSmCommand::Right(RIGHT_DELAY))
-                                        .is_ok()
-                                    {
-                                        last_turn = true;
-                                    }
-                                } else if motors_sm
-                                    .process_cmd(MotorsSmCommand::Forward(FORWARD_DELAY))
-                                    .is_ok()
-                                {
-                                    last_turn = false;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                SensorMessage::Distance(distance) => {
-                    // Do emergency stop if distance is < 5cm
-                    if (!distance_close && distance <= DISTANCE_CLOSE)
-                        || (distance_close && distance >= DISTANCE_CLOSE)
-                    {
-                        distance_cnt = (distance_cnt + 1).clamp(0, DISTANCE_SAMPLES);
-                    } else {
-                        distance_cnt = 0;
-                    }
+            if let SensorMessage::Color(color) = msg {
+                led.write([color.to_rgb()]).unwrap();
+            }
 
-                    if distance_cnt == DISTANCE_SAMPLES {
-                        distance_close = !distance_close;
-                        distance_cnt = 0;
-                        log::info!("Distance close flipped to {}", distance_close);
-                    }
-
-                    if distance_close {
-                        log::info!("Emergency stop!");
-                        motors_sm
-                            .process_cmd(MotorsSmCommand::EmergencyStop)
-                            .unwrap();
-                    }
-                }
-
-                SensorMessage::Voltage(v) => {
-                    if v > NO_BATTERY && v < BATTERY_LOW {
-                        // Break the loop if voltage is lower than 3.2v
-                        log::info!("Battery low: {} mV", v * 2);
-                        motors_sm
-                            .process_cmd(MotorsSmCommand::EmergencyStop)
-                            .unwrap();
-                        break;
+            let cmd = control_sm.process_event(msg);
+            if let Some(cmd) = cmd {
+                match motors_sm.process_cmd(cmd) {
+                    Ok(()) => {}
+                    Err(x) => {
+                        log::debug!("motors_sm.process_cmd returned {:?}", x);
                     }
                 }
             }
@@ -285,12 +201,5 @@ async fn main(spawner: Spawner) {
                 now = None;
             }
         }
-    }
-
-    loop {
-        led.write([RGB::new(64, 0, 0)]).unwrap();
-        Timer::after(Duration::from_millis(500)).await;
-        led.write([RGB::new(0, 0, 0)]).unwrap();
-        Timer::after(Duration::from_millis(500)).await;
     }
 }
