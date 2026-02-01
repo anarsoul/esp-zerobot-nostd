@@ -6,7 +6,7 @@ use crate::comm::{SensorMessage, SENSOR_CHANNEL};
 use hcsr04_async::{Config, DistanceUnit, Hcsr04, TemperatureUnit};
 
 #[embassy_executor::task]
-pub async fn distance_task(trigger: AnyPin, echo: AnyPin) {
+pub async fn distance_task(trigger: AnyPin<'static>, echo: AnyPin<'static>) {
     struct EmbassyClock;
     impl hcsr04_async::Now for EmbassyClock {
         fn now_micros(&self) -> u64 {

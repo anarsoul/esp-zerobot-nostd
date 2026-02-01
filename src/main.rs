@@ -6,7 +6,7 @@ use embassy_time::{Duration, Instant, Timer};
 use esp_backtrace as _;
 use esp_hal::{
     analog::adc,
-    gpio::Pin,
+    gpio::{DriveMode, Pin},
     i2c,
     ledc::{self, channel::ChannelIFace, timer::TimerIFace},
     peripherals, spi,
@@ -34,7 +34,7 @@ use motors::{Motors, MotorsSm};
 use esp_alloc as _;
 
 #[embassy_executor::task]
-async fn battery_task(adc: peripherals::ADC1, pin: esp_hal::gpio::GpioPin<4>) {
+async fn battery_task(adc: peripherals::ADC1<'static>, pin: peripherals::GPIO4<'static>) {
     log::info!("Starting battery task");
     let mut adc1_config = adc::AdcConfig::new();
     let mut adc_pin = adc1_config.enable_pin_with_cal::<_, adc::AdcCalCurve<peripherals::ADC1>>(
@@ -52,19 +52,23 @@ async fn battery_task(adc: peripherals::ADC1, pin: esp_hal::gpio::GpioPin<4>) {
     }
 }
 
-#[esp_hal_embassy::main]
-async fn main(spawner: Spawner) {
+esp_bootloader_esp_idf::esp_app_desc!();
+
+#[esp_rtos::main]
+async fn main(spawner: Spawner) -> ! {
     esp_println::logger::init_logger_from_env();
     esp_alloc::heap_allocator!(size: 72 * 1024);
 
     #[allow(unused)]
     let peripherals = esp_hal::init(esp_hal::Config::default());
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    esp_hal_embassy::init(timg0.timer0);
+    let sw_interrupt =
+        esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
+    esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
 
     let mosi = peripherals.GPIO10;
-    let scl = peripherals.GPIO8;
-    let sda = peripherals.GPIO9;
+    let scl = peripherals.GPIO9;
+    let sda = peripherals.GPIO5;
 
     let spi = spi::master::Spi::new(
         peripherals.SPI2,
@@ -83,9 +87,9 @@ async fn main(spawner: Spawner) {
         i2c::master::Config::default().with_frequency(Rate::from_khz(100)),
     )
     .unwrap()
+    .into_async()
     .with_sda(sda)
-    .with_scl(scl)
-    .into_async();
+    .with_scl(scl);
 
     let mut ledc = ledc::Ledc::new(peripherals.LEDC);
     ledc.set_global_slow_clock(ledc::LSGlobalClkSource::APBClk);
@@ -112,7 +116,7 @@ async fn main(spawner: Spawner) {
         .configure(ledc::channel::config::Config {
             timer: &lstimer0,
             duty_pct: 0,
-            pin_config: ledc::channel::config::PinConfig::PushPull,
+            drive_mode: DriveMode::PushPull,
         })
         .unwrap();
 
@@ -121,7 +125,7 @@ async fn main(spawner: Spawner) {
         .configure(ledc::channel::config::Config {
             timer: &lstimer0,
             duty_pct: 0,
-            pin_config: ledc::channel::config::PinConfig::PushPull,
+            drive_mode: DriveMode::PushPull,
         })
         .unwrap();
     let mut mot2_1 = ledc.channel(ledc::channel::Number::Channel2, peripherals.GPIO0);
@@ -129,7 +133,7 @@ async fn main(spawner: Spawner) {
         .configure(ledc::channel::config::Config {
             timer: &lstimer1,
             duty_pct: 0,
-            pin_config: ledc::channel::config::PinConfig::PushPull,
+            drive_mode: DriveMode::PushPull,
         })
         .unwrap();
     let mut mot2_2 = ledc.channel(ledc::channel::Number::Channel3, peripherals.GPIO1);
@@ -137,7 +141,7 @@ async fn main(spawner: Spawner) {
         .configure(ledc::channel::config::Config {
             timer: &lstimer1,
             duty_pct: 0,
-            pin_config: ledc::channel::config::PinConfig::PushPull,
+            drive_mode: DriveMode::PushPull,
         })
         .unwrap();
 
