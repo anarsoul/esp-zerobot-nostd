@@ -1,6 +1,9 @@
 use esp_hal::ledc::{self, channel::ChannelIFace};
+use portable_atomic::Ordering;
+use crate::pid::Pid;
+use crate::encoder::{MOTOR1_PULSES,MOTOR2_PULSES};
 
-const ACCEL_TIME: u16 = 100; // ms
+const ACCEL_TIME: u16 = 200; // ms
 const DECEL_TIME_L: u16 = 100;
 const DECEL_TIME_R: u16 = 100;
 
@@ -10,6 +13,20 @@ pub struct Config {
     decel_time_r: u16,
     left_duty: u8,
     right_duty: u8,
+    #[cfg(feature = "pid")]
+    min_duty: u8,
+    #[cfg(feature = "pid")]
+    max_duty: u8,
+    #[cfg(feature = "pid")]
+    target_forward: u32,
+    #[cfg(feature = "pid")]
+    pid_kp: i32,
+    #[cfg(feature = "pid")]
+    pid_ki: i32,
+    #[cfg(feature = "pid")]
+    pid_kd: i32,
+    #[cfg(feature = "pid")]
+    pid_integral_limit: i32,
 }
 
 impl Default for Config {
@@ -18,8 +35,22 @@ impl Default for Config {
             accel_time: ACCEL_TIME,
             decel_time_l: DECEL_TIME_L,
             decel_time_r: DECEL_TIME_R,
-            left_duty: 75,
-            right_duty: 75,
+            left_duty: 70,
+            right_duty: 70,
+            #[cfg(feature = "pid")]
+            min_duty: 70,
+            #[cfg(feature = "pid")]
+            max_duty: 80,
+            #[cfg(feature = "pid")]
+            target_forward: 40,
+            #[cfg(feature = "pid")]
+            pid_kp: 32,
+            #[cfg(feature = "pid")]
+            pid_ki: 4,
+            #[cfg(feature = "pid")]
+            pid_kd: 8,
+            #[cfg(feature = "pid")]
+            pid_integral_limit: 512,
         }
     }
 }
@@ -201,15 +232,39 @@ pub struct MotorsSm<'a> {
     current_cmd: Option<MotorsSmCommand>,
     state: MotorSmState,
     motors: Motors<'a>,
+    #[cfg(feature = "pid")]
+    left_pid: Pid,
+    #[cfg(feature = "pid")]
+    right_pid: Pid,
 }
 
 impl<'a> MotorsSm<'a> {
     pub fn init(motors: Motors<'a>) -> Self {
+        #[cfg(feature = "pid")]
+        let make_pid = |m: &Motors| {
+            Pid::new(
+                m.config.pid_kp,
+                m.config.pid_ki,
+                m.config.pid_kd,
+                m.config.pid_integral_limit,
+            )
+        };
         Self {
             current_cmd: None,
             state: MotorSmState::Stopped,
+            #[cfg(feature = "pid")]
+            left_pid: make_pid(&motors),
+            #[cfg(feature = "pid")]
+            right_pid: make_pid(&motors),
             motors,
         }
+    }
+
+    fn reset_all_pids(&mut self) {
+        #[cfg(feature = "pid")]
+        self.left_pid.reset();
+        #[cfg(feature = "pid")]
+        self.right_pid.reset();
     }
 
     pub fn next(&mut self) -> u64 {
@@ -219,24 +274,33 @@ impl<'a> MotorsSm<'a> {
                 if let Some(cmd) = self.current_cmd {
                     match cmd {
                         MotorsSmCommand::Forward(_) => {
+                            MOTOR1_PULSES.store(0, Ordering::Relaxed);
+                            MOTOR2_PULSES.store(0, Ordering::Relaxed);
                             self.state = MotorSmState::WaitAccel;
                             self.motors.forward() as u64
                         }
                         MotorsSmCommand::Backwards(_) => {
+                            MOTOR1_PULSES.store(0, Ordering::Relaxed);
+                            MOTOR2_PULSES.store(0, Ordering::Relaxed);
                             self.state = MotorSmState::WaitAccel;
                             self.motors.backwards() as u64
                         }
                         MotorsSmCommand::Left(_) => {
+                            MOTOR1_PULSES.store(0, Ordering::Relaxed);
+                            MOTOR2_PULSES.store(0, Ordering::Relaxed);
                             self.state = MotorSmState::WaitAccel;
                             self.motors.left() as u64
                         }
                         MotorsSmCommand::Right(_) => {
+                            MOTOR1_PULSES.store(0, Ordering::Relaxed);
+                            MOTOR2_PULSES.store(0, Ordering::Relaxed);
                             self.state = MotorSmState::WaitAccel;
                             self.motors.right() as u64
                         }
                         MotorsSmCommand::EmergencyStop => {
-                            self.state = MotorSmState::Stopped;
                             self.motors.emergency_stop();
+                            self.reset_all_pids();
+                            self.state = MotorSmState::Stopped;
                             self.current_cmd = None;
                             0
                         }
@@ -271,8 +335,9 @@ impl<'a> MotorsSm<'a> {
                             right
                         }
                         MotorsSmCommand::EmergencyStop => {
-                            self.state = MotorSmState::Stopped;
                             self.motors.emergency_stop();
+                            self.reset_all_pids();
+                            self.state = MotorSmState::Stopped;
                             self.current_cmd = None;
                             0
                         }
@@ -300,8 +365,9 @@ impl<'a> MotorsSm<'a> {
                     .current_cmd
                     .is_some_and(|c| matches!(c, MotorsSmCommand::EmergencyStop))
                 {
-                    self.state = MotorSmState::Stopped;
                     self.motors.emergency_stop();
+                    self.reset_all_pids();
+                    self.state = MotorSmState::Stopped;
                     self.current_cmd = None;
                     0
                 } else {
@@ -310,6 +376,37 @@ impl<'a> MotorsSm<'a> {
                 }
             }
             MotorSmState::WaitDecel => {
+                let left_pulses = crate::encoder::MOTOR1_PULSES.load(Ordering::Relaxed) as i32;
+                let right_pulses = crate::encoder::MOTOR2_PULSES.load(Ordering::Relaxed) as i32;
+
+                log::info!("Pulse counts: left={} right={}", left_pulses, right_pulses);
+
+                #[cfg(feature = "pid")]
+                {
+                    let target = self.motors.config.target_forward as i32;
+                    let is_turn = matches!(
+                        self.current_cmd,
+                        Some(MotorsSmCommand::Left(_) | MotorsSmCommand::Right(_))
+                    );
+                    if !is_turn {
+                        let left_adj = self.left_pid.update(target, left_pulses);
+                        let right_adj = self.right_pid.update(target, right_pulses);
+                        let min = self.motors.config.min_duty as i32;
+                        let max = self.motors.config.max_duty as i32;
+                        self.motors.config.left_duty =
+                            (self.motors.config.left_duty as i32 + left_adj)
+                                .clamp(min, max) as u8;
+                        self.motors.config.right_duty =
+                            (self.motors.config.right_duty as i32 + right_adj)
+                                .clamp(min, max) as u8;
+                        log::info!(
+                            "Duty adjusted: left={} right={}",
+                            self.motors.config.left_duty,
+                            self.motors.config.right_duty,
+                        );
+                    }
+                }
+
                 self.state = MotorSmState::Stopped;
                 self.current_cmd = None;
                 0

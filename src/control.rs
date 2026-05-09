@@ -20,8 +20,8 @@ const DISTANCE_CLOSE: u16 = 7; // cm
 const DISTANCE_SAMPLES: u32 = 3;
 
 const FORWARD_DELAY: u64 = 420;
-const LEFT_DELAY: u64 = 110;
-const RIGHT_DELAY: u64 = 130;
+const LEFT_DELAY: u64 = 100;
+const RIGHT_DELAY: u64 = 100;
 const _BACKWARDS_DELAY: u64 = 1000;
 
 impl ControlSm {

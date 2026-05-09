@@ -23,7 +23,10 @@ mod color;
 mod comm;
 mod control;
 mod distance;
+mod encoder;
 mod motors;
+#[cfg(feature = "pid")]
+mod pid;
 
 use color::color_task;
 use comm::{SensorMessage, SENSOR_CHANNEL};
@@ -68,6 +71,11 @@ async fn main(spawner: Spawner) -> ! {
 
     // Wait for 1s before proceeding with initialization
     Timer::after(Duration::from_millis(1000)).await;
+
+    let mot1_enc = peripherals.GPIO8.degrade();
+    let mot2_enc = peripherals.GPIO20.degrade();
+
+    encoder::init(peripherals.IO_MUX, mot1_enc, mot2_enc);
 
     let mosi = peripherals.GPIO10;
     let scl = peripherals.GPIO9;
