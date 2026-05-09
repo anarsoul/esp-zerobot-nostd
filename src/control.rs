@@ -19,9 +19,9 @@ const NO_BATTERY: u16 = 200; // 200 mV
 const DISTANCE_CLOSE: u16 = 7; // cm
 const DISTANCE_SAMPLES: u32 = 3;
 
-const FORWARD_DELAY: u64 = 600;
-const LEFT_DELAY: u64 = 180;
-const RIGHT_DELAY: u64 = 160;
+const FORWARD_DELAY: u64 = 420;
+const LEFT_DELAY: u64 = 110;
+const RIGHT_DELAY: u64 = 130;
 const _BACKWARDS_DELAY: u64 = 1000;
 
 impl ControlSm {
@@ -37,7 +37,7 @@ impl ControlSm {
         match self.state {
             ControlState::BatteryLow => match message {
                 SensorMessage::Voltage(v) => {
-                    if !(NO_BATTERY..=BATTERY_LOW).contains(&v) {
+                    if v > BATTERY_LOW {
                         self.state = ControlState::Blocked;
                         self.distance_samples_cnt = 0;
                     }

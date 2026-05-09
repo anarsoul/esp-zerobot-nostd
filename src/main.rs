@@ -66,6 +66,9 @@ async fn main(spawner: Spawner) -> ! {
         esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
 
+    // Wait for 1s before proceeding with initialization
+    Timer::after(Duration::from_millis(1000)).await;
+
     let mosi = peripherals.GPIO10;
     let scl = peripherals.GPIO9;
     let sda = peripherals.GPIO5;
@@ -182,16 +185,25 @@ async fn main(spawner: Spawner) -> ! {
         .await;
 
         if let Either::Second(msg) = res {
+            let mut is_color = false;
             if let SensorMessage::Color(color) = msg {
                 led.write([color.to_rgb()]).unwrap();
+                is_color = true;
             }
 
-            let cmd = control_sm.process_event(msg);
-            if let Some(cmd) = cmd {
-                match motors_sm.process_cmd(cmd) {
-                    Ok(()) => {}
-                    Err(x) => {
-                        log::debug!("motors_sm.process_cmd returned {:?}", x);
+            // Supress color messages when motor_sm is busy
+            // Otherwise it may clear "last_turn" flag, but motors_sm will reject
+            // the cmd, since it's busy
+            //
+            // Other events should be passed, since it may result in emergency stop
+            if !motors_sm.busy() || !is_color {
+                let cmd = control_sm.process_event(msg);
+                if let Some(cmd) = cmd {
+                    match motors_sm.process_cmd(cmd) {
+                        Ok(()) => {}
+                        Err(x) => {
+                            log::info!("motors_sm.process_cmd returned {:?}", x);
+                        }
                     }
                 }
             }

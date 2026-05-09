@@ -1,8 +1,8 @@
 use esp_hal::ledc::{self, channel::ChannelIFace};
 
-const ACCEL_TIME: u16 = 500; // ms
-const DECEL_TIME_L: u16 = 1000;
-const DECEL_TIME_R: u16 = 500;
+const ACCEL_TIME: u16 = 100; // ms
+const DECEL_TIME_L: u16 = 100;
+const DECEL_TIME_R: u16 = 100;
 
 pub struct Config {
     accel_time: u16,
@@ -18,8 +18,8 @@ impl Default for Config {
             accel_time: ACCEL_TIME,
             decel_time_l: DECEL_TIME_L,
             decel_time_r: DECEL_TIME_R,
-            left_duty: 87,
-            right_duty: 81,
+            left_duty: 75,
+            right_duty: 75,
         }
     }
 }
@@ -349,6 +349,17 @@ impl<'a> MotorsSm<'a> {
                     // Busy. Retry later
                     Err(MotorsSmError::Busy)
                 }
+            }
+        }
+    }
+
+    pub fn busy(&self) -> bool {
+        match self.state {
+            MotorSmState::Stopped => {
+                false
+            },
+            _ => {
+                true
             }
         }
     }
