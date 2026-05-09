@@ -451,13 +451,6 @@ impl<'a> MotorsSm<'a> {
     }
 
     pub fn busy(&self) -> bool {
-        match self.state {
-            MotorSmState::Stopped => {
-                false
-            },
-            _ => {
-                true
-            }
-        }
+        !matches!(self.state, MotorSmState::Stopped)
     }
 }
