@@ -158,9 +158,9 @@ async fn main(spawner: Spawner) -> ! {
     let battery_pin = peripherals.GPIO4;
     let adc = peripherals.ADC1;
 
-    spawner.spawn(battery_task(adc, battery_pin)).unwrap();
-    spawner.spawn(color_task(i2c)).unwrap();
-    spawner.spawn(distance_task(trigger, echo)).unwrap();
+    spawner.spawn(battery_task(adc, battery_pin).unwrap());
+    spawner.spawn(color_task(i2c).unwrap());
+    spawner.spawn(distance_task(trigger, echo).unwrap());
 
     led.write([RGB::new(0, 0, 0)]).unwrap();
     log::info!("Starting main loop");
