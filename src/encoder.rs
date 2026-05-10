@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 
 use critical_section::Mutex;
-use esp_hal::gpio::{Event, Input, InputConfig, Io, Pull, AnyPin};
+use esp_hal::gpio::{AnyPin, Event, Input, InputConfig, Io, Pull};
 use esp_hal::peripherals;
 use portable_atomic::{AtomicU32, Ordering};
 

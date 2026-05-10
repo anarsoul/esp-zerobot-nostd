@@ -13,28 +13,33 @@ use esp_hal::{
     time::Rate,
     timer::timg::TimerGroup,
 };
+use esp_radio::esp_now::{BROADCAST_ADDRESS, EspNowSender};
 
-use smart_leds::{SmartLedsWrite, RGB};
+use smart_leds::{RGB, SmartLedsWrite};
 use ws2812_spi::Ws2812;
 
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{Either, select};
 
-mod color;
-mod comm;
-mod control;
-mod distance;
-mod encoder;
-mod motors;
-#[cfg(feature = "pid")]
-mod pid;
-
-use color::color_task;
-use comm::{SensorMessage, SENSOR_CHANNEL};
-use control::ControlSm;
-use distance::distance_task;
-use motors::{Motors, MotorsSm};
+use esp_zerobot_nostd::color::color_task;
+use esp_zerobot_nostd::comm::{SENSOR_CHANNEL, SensorMessage, TELEMETRY_CHANNEL};
+use esp_zerobot_nostd::control::ControlSm;
+use esp_zerobot_nostd::distance::distance_task;
+use esp_zerobot_nostd::motors::{Motors, MotorsSm};
+use esp_zerobot_nostd::telemetry;
+use esp_zerobot_nostd::{encoder, motors};
 
 use esp_alloc as _;
+
+#[embassy_executor::task]
+async fn telemetry_task(mut sender: EspNowSender<'static>) {
+    loop {
+        let pkt = TELEMETRY_CHANNEL.receive().await;
+        let buf = telemetry::pack(&pkt);
+        if let Err(e) = sender.send_async(&BROADCAST_ADDRESS, &buf).await {
+            log::warn!("ESP-NOW send error: {:?}", e);
+        }
+    }
+}
 
 #[embassy_executor::task]
 async fn battery_task(adc: peripherals::ADC1<'static>, pin: peripherals::GPIO4<'static>) {
@@ -51,7 +56,7 @@ async fn battery_task(adc: peripherals::ADC1<'static>, pin: peripherals::GPIO4<'
 
         SENSOR_CHANNEL.send(SensorMessage::Voltage(v)).await;
         log::debug!("Battery voltage: {}", v);
-        Timer::after(Duration::from_millis(200)).await;
+        Timer::after(Duration::from_millis(1000)).await;
     }
 }
 
@@ -170,6 +175,12 @@ async fn main(spawner: Spawner) -> ! {
     spawner.spawn(color_task(i2c).unwrap());
     spawner.spawn(distance_task(trigger, echo).unwrap());
 
+    let (_wifi_ctrl, interfaces) =
+        esp_radio::wifi::new(peripherals.WIFI, Default::default()).unwrap();
+    let esp_now = interfaces.esp_now;
+    let (_manager, sender, _receiver) = esp_now.split();
+    spawner.spawn(telemetry_task(sender).unwrap());
+
     led.write([RGB::new(0, 0, 0)]).unwrap();
     log::info!("Starting main loop");
 
@@ -178,11 +189,7 @@ async fn main(spawner: Spawner) -> ! {
     loop {
         let timer_delay = if wait > 0 {
             let elapsed = now.unwrap().elapsed().as_millis();
-            if elapsed > wait {
-                10
-            } else {
-                wait - elapsed
-            }
+            if elapsed > wait { 10 } else { wait - elapsed }
         } else {
             100
         };
@@ -193,6 +200,19 @@ async fn main(spawner: Spawner) -> ! {
         .await;
 
         if let Either::Second(msg) = res {
+            if let SensorMessage::Voltage(v) = msg {
+                let (left_duty, right_duty) = motors_sm.current_duties();
+                let (left_pulses, right_pulses) = motors_sm.last_pulse_counts();
+                let pkt = telemetry::TelemetryPacket {
+                    battery_mv: v,
+                    left_duty,
+                    right_duty,
+                    left_pulses,
+                    right_pulses,
+                };
+                TELEMETRY_CHANNEL.try_send(pkt).ok();
+            }
+
             let mut is_color = false;
             if let SensorMessage::Color(color) = msg {
                 led.write([color.to_rgb()]).unwrap();
@@ -218,7 +238,7 @@ async fn main(spawner: Spawner) -> ! {
         }
 
         if wait == 0 || now.is_some_and(|now| now.elapsed().as_millis() >= wait) {
-            wait = motors_sm.next();
+            wait = motors_sm.process();
             if wait > 0 {
                 now = Some(Instant::now());
             } else {

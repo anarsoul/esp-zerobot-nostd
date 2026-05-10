@@ -1,7 +1,7 @@
+use crate::encoder::{MOTOR1_PULSES, MOTOR2_PULSES};
+use crate::pid::Pid;
 use esp_hal::ledc::{self, channel::ChannelIFace};
 use portable_atomic::Ordering;
-use crate::pid::Pid;
-use crate::encoder::{MOTOR1_PULSES,MOTOR2_PULSES};
 
 const ACCEL_TIME: u16 = 200; // ms
 const DECEL_TIME_L: u16 = 100;
@@ -232,6 +232,8 @@ pub struct MotorsSm<'a> {
     current_cmd: Option<MotorsSmCommand>,
     state: MotorSmState,
     motors: Motors<'a>,
+    last_left_pulses: u32,
+    last_right_pulses: u32,
     #[cfg(feature = "pid")]
     left_pid: Pid,
     #[cfg(feature = "pid")]
@@ -252,6 +254,8 @@ impl<'a> MotorsSm<'a> {
         Self {
             current_cmd: None,
             state: MotorSmState::Stopped,
+            last_left_pulses: 0,
+            last_right_pulses: 0,
             #[cfg(feature = "pid")]
             left_pid: make_pid(&motors),
             #[cfg(feature = "pid")]
@@ -267,7 +271,7 @@ impl<'a> MotorsSm<'a> {
         self.right_pid.reset();
     }
 
-    pub fn next(&mut self) -> u64 {
+    pub fn process(&mut self) -> u64 {
         log::debug!("from: {:?}", self.state);
         let res = match self.state {
             MotorSmState::Stopped => {
@@ -376,8 +380,12 @@ impl<'a> MotorsSm<'a> {
                 }
             }
             MotorSmState::WaitDecel => {
-                let left_pulses = crate::encoder::MOTOR1_PULSES.load(Ordering::Relaxed) as i32;
-                let right_pulses = crate::encoder::MOTOR2_PULSES.load(Ordering::Relaxed) as i32;
+                let left_pulses = crate::encoder::MOTOR1_PULSES.load(Ordering::Relaxed);
+                let right_pulses = crate::encoder::MOTOR2_PULSES.load(Ordering::Relaxed);
+                self.last_left_pulses = left_pulses;
+                self.last_right_pulses = right_pulses;
+                let left_pulses = left_pulses as i32;
+                let right_pulses = right_pulses as i32;
 
                 log::info!("Pulse counts: left={} right={}", left_pulses, right_pulses);
 
@@ -394,11 +402,10 @@ impl<'a> MotorsSm<'a> {
                         let min = self.motors.config.min_duty as i32;
                         let max = self.motors.config.max_duty as i32;
                         self.motors.config.left_duty =
-                            (self.motors.config.left_duty as i32 + left_adj)
-                                .clamp(min, max) as u8;
+                            (self.motors.config.left_duty as i32 + left_adj).clamp(min, max) as u8;
                         self.motors.config.right_duty =
-                            (self.motors.config.right_duty as i32 + right_adj)
-                                .clamp(min, max) as u8;
+                            (self.motors.config.right_duty as i32 + right_adj).clamp(min, max)
+                                as u8;
                         log::info!(
                             "Duty adjusted: left={} right={}",
                             self.motors.config.left_duty,
@@ -452,5 +459,16 @@ impl<'a> MotorsSm<'a> {
 
     pub fn busy(&self) -> bool {
         !matches!(self.state, MotorSmState::Stopped)
+    }
+
+    pub fn current_duties(&self) -> (u8, u8) {
+        (
+            self.motors.l1.max(self.motors.l2),
+            self.motors.r1.max(self.motors.r2),
+        )
+    }
+
+    pub fn last_pulse_counts(&self) -> (u32, u32) {
+        (self.last_left_pulses, self.last_right_pulses)
     }
 }

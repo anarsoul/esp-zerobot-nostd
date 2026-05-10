@@ -1,4 +1,4 @@
-use crate::comm::{SensorMessage, SENSOR_CHANNEL};
+use crate::comm::{SENSOR_CHANNEL, SensorMessage};
 use embassy_time::{Duration, Timer};
 use esp_hal::i2c;
 use smart_leds::RGB;

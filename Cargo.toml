@@ -2,8 +2,17 @@
 name = "esp-zerobot-nostd"
 version = "0.1.0"
 authors = ["Vasily Khoruzhick <anarsoul@gmail.com>"]
-edition = "2021"
+edition = "2024"
 license = "MIT"
+rust-version = "1.88"
+
+[[bin]]
+name = "esp-zerobot-nostd"
+path = "src/bin/zerobot.rs"
+
+[[bin]]
+name = "receiver"
+path = "src/bin/receiver.rs"
 
 [profile.dev]
 # Rust debug is too slow.
@@ -37,9 +46,17 @@ esp-backtrace = { version = "0.19.0", features = [
 ] }
 esp-bootloader-esp-idf = { version = "0.5.0", features = [ "esp32c3" ] }
 esp-hal = { version = "1.1.1", features = [ "esp32c3", "unstable" ] }
+esp-radio = { version = "0.18.0", features = [
+    "esp-now",
+    "esp32c3",
+    "log-04",
+    "unstable",
+    "wifi",
+] }
 esp-rtos = { version = "0.3.0", features = [
     "embassy",
     "esp-alloc",
+    "esp-radio",
     "esp32c3",
     "log-04",
 ] }
@@ -51,3 +68,4 @@ smart-leds = "0.4.0"
 static_cell = { version = "2.1.1" }
 tcs3472 = { version = "1.0.0", features = [ "async" ] }
 ws2812-spi = "0.5.1"
+

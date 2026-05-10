@@ -1,7 +1,7 @@
 use embassy_time::{Delay, Duration, Instant, Timer};
 use esp_hal::gpio::{AnyPin, Input, InputConfig, Level, Output, OutputConfig};
 
-use crate::comm::{SensorMessage, SENSOR_CHANNEL};
+use crate::comm::{SENSOR_CHANNEL, SensorMessage};
 
 use hcsr04_async::{Config, DistanceUnit, Hcsr04, TemperatureUnit};
 
