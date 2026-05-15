@@ -1,57 +1,60 @@
-# Project Description
+# CLAUDE.md
 
-This is a project for ESP32-C3 written in Rust `no_std`, using `esp-hal`. It uses Embassy as the async runtime.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-This is software for a small robot car. It is driven using 2 DC motors with motor drivers connected to
-GPIO0, GPIO1 and GPIO2, GPIO3. Motor speed is controlled using PWM with the LEDC peripheral.
+## Project Overview
 
-The robot has 2 sensors:
+Bare-metal ESP32-C3 firmware for a tiny autonomous robot car. The robot follows color mats (Purple=forward, Blue=right, Orange/Red=left) using a TCS3472 color sensor and avoids obstacles with an HC-SR04 ultrasonic sensor. Telemetry is broadcast over ESP-NOW.
 
-- Ultrasonic distance sensor (HCSR04): GPIO7 for trigger, GPIO6 for echo
-- Color sensor (TCS3472) on the bottom: connected to I2C, SCL: GPIO9, SDA: GPIO5
-
-The "path" for the robot is built using color pads, and the robot senses the color of the pad to
-determine direction:
-
-- Purple: forward
-- Red or orange: forward and then left
-- Blue: forward and then right
-
-If the robot determines that it is blocked, it issues an emergency stop.
-
-## Project Structure
-
-The software is event-driven, with color and distance tasks issuing events for the "control" state machine.
-
-| File              | Purpose                                      |
-|-------------------|----------------------------------------------|
-| `src/main.rs`     | Entry point, glue for all components and main loop |
-| `src/color.rs`    | Color sensor task                            |
-| `src/distance.rs` | Distance task                                |
-| `src/control.rs`  | Control state machine                        |
-| `src/motors.rs`   | Motors state machine                         |
-
-Sensor tasks send events to `SENSOR_CHANNEL`. The main loop consumes events from `SENSOR_CHANNEL`
-and sends them to `control_sm`, which produces a command for `motors_sm`.
-
-# Rust `no_std` Guidelines
-
-## General Rules
-
-- ALWAYS use `#[no_std]` in all lib/main files.
-- NEVER use `std::*`. Use `core::*` or `alloc::*` (if alloc is allowed).
-- Define `#[panic_handler]` in the final binary crate.
-- Prefer `heapless` structures (queues, vectors) over `std` collections.
-- Ensure all code is suitable for embedded/bare-metal environments.
-
-## Development Constraints
-
-- **Allocation:** Only use the `alloc` crate if a heap allocator is explicitly initialized.
-- **Floating Point:** Avoid `f32`/`f64` if the target is a soft-float architecture.
-- **Error Handling:** Use `Result` without `std::error::Error`.
+Hardware: ESP32-C3-Zero, LM298N motor drivers, TCS3472 I2C color sensor, HC-SR04 ultrasonic sensor, WS2812 RGB LED.
 
 ## Commands
 
-- **Build:** `cargo build`
-- **Clippy:** `cargo clippy --no-default-features`
-- **Check:** `cargo check`
+```bash
+# Build
+cargo build --release
+
+# Flash and monitor (requires espflash: cargo install espflash)
+cargo run --release
+
+# Build/run the telemetry receiver binary
+cargo run --release --bin receiver
+
+# Lint (CI treats warnings as errors)
+cargo clippy --all-features -- -D warnings
+
+# Format
+cargo fmt --all
+
+# Build without PID feature
+cargo build --release --no-default-features
+```
+
+## Architecture
+
+The project is a `no_std` crate targeting `riscv32imc-unknown-none-elf` (ESP32-C3). There are two binaries:
+
+- **`src/bin/zerobot.rs`** — Main robot firmware. Initializes all peripherals (GPIO, I2C, SPI, LEDC PWM, ADC), spawns async Embassy tasks, and runs the main event loop that processes sensor messages and drives the motor state machine.
+- **`src/bin/receiver.rs`** — Standalone telemetry monitor that receives ESP-NOW packets and logs robot state.
+
+Core modules in `src/`:
+
+- **`control.rs`** — Finite state machine: maps `SensorReading` events (color, distance) to `MotorCommand` outputs.
+- **`motors.rs`** — Motor control state machine with acceleration/deceleration ramps and optional PID-based speed synchronization between left/right motors.
+- **`pid.rs`** — Fixed-point PID controller used by `motors.rs` (enabled via default feature `pid`).
+- **`encoder.rs`** — GPIO interrupt handler counting motor encoder pulses. Note: Motor1 hardware generates 2× pulses vs Motor2, compensated in code.
+- **`color.rs`** — TCS3472 driver wrapper with color classification logic.
+- **`distance.rs`** — Async HC-SR04 ultrasonic sensor task.
+- **`comm.rs`** — Embassy `Channel` definitions shared between tasks (`SENSOR_CHANNEL`, `TELEMETRY_CHANNEL`).
+- **`telemetry.rs`** — Packet format serialized over ESP-NOW.
+
+### Task / Concurrency Model
+
+Uses `esp-rtos` + Embassy executor. Tasks communicate via `embassy-sync` channels defined in `comm.rs`. The main loop in `zerobot.rs` receives `SensorReading` messages and dispatches `MotorCommand` to `motors.rs`.
+
+### Key Constraints
+
+- `no_std`, `no_main` — entry point via `esp_rtos::entry` macro.
+- Heap: 72 KB via `esp-alloc`.
+- Profile: `opt-level = "s"` (size) in both dev and release; release adds LTO fat.
+- Toolchain: stable Rust with `rust-src` component (needed for `-Z build-std`). Defined in `rust-toolchain.toml`.
